@@ -128,7 +128,7 @@ const App: React.FC = () => {
                 <select 
                   className="w-full rounded-2xl border-slate-200 bg-slate-50 focus:ring-4 focus:ring-blue-100 py-3.5 font-bold text-slate-700 transition-all cursor-pointer"
                   value={config.subject}
-                  onChange={(e) => setConfig({...config, subject: e.target.value})}
+                  onChange={(e) => setConfig(prev => ({...prev, subject: e.target.value}))}
                 >
                   {Object.values(Subject).map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
@@ -140,7 +140,7 @@ const App: React.FC = () => {
                   <select 
                     className="w-full rounded-2xl border-slate-200 bg-slate-50 py-3.5 font-bold text-slate-700"
                     value={config.grade}
-                    onChange={(e) => setConfig({...config, grade: e.target.value})}
+                    onChange={(e) => setConfig(prev => ({...prev, grade: e.target.value}))}
                   >
                     {Object.values(Grade).map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
@@ -150,7 +150,7 @@ const App: React.FC = () => {
                   <select 
                     className="w-full rounded-2xl border-slate-200 bg-slate-50 py-3.5 font-bold text-slate-700"
                     value={config.scale}
-                    onChange={(e) => setConfig({...config, scale: e.target.value})}
+                    onChange={(e) => setConfig(prev => ({...prev, scale: e.target.value}))}
                   >
                     {Object.values(Scale).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -162,7 +162,7 @@ const App: React.FC = () => {
                 <select 
                   className="w-full rounded-2xl border-slate-200 bg-slate-50 py-3.5 font-bold text-slate-700"
                   value={config.duration}
-                  onChange={(e) => setConfig({...config, duration: e.target.value})}
+                  onChange={(e) => setConfig(prev => ({...prev, duration: e.target.value}))}
                 >
                   {Object.values(Duration).map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
@@ -173,17 +173,21 @@ const App: React.FC = () => {
                 <select 
                   className="w-full rounded-2xl border-slate-200 bg-slate-50 py-3.5 font-bold text-slate-700 mb-3"
                   value={config.scopeType}
-                  onChange={(e) => setConfig({...config, scopeType: e.target.value as ScopeType})}
+                  onChange={(e) => setConfig(prev => ({...prev, scopeType: e.target.value as ScopeType}))}
                 >
                   {Object.values(ScopeType).map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
                 {config.scopeType === ScopeType.TOPIC && (
                   <input 
                     type="text"
+                    id="specificTopicInput"
                     placeholder="Nhập chương hoặc chủ đề..."
-                    className="w-full rounded-2xl border-slate-200 focus:ring-4 focus:ring-blue-100 py-3.5 px-4 font-medium"
-                    value={config.specificTopic}
-                    onChange={(e) => setConfig({...config, specificTopic: e.target.value})}
+                    className="w-full rounded-2xl border-slate-200 focus:ring-4 focus:ring-blue-100 py-3.5 px-4 font-medium text-slate-800 bg-white shadow-sm transition-all"
+                    value={config.specificTopic || ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setConfig(prev => ({...prev, specificTopic: value}));
+                    }}
                   />
                 )}
               </div>
@@ -201,7 +205,7 @@ const App: React.FC = () => {
             <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100 flex items-start space-x-4">
               <AlertCircle className="w-6 h-6 text-blue-700 shrink-0 mt-0.5" />
               <p className="text-[11px] text-blue-900 font-medium leading-relaxed italic">
-                * Đã cập nhật ma trận và bảng đặc tả theo đúng mẫu CV 7991 của Bộ GD với cấu trúc 4 tầng tiêu đề.
+                * Đã sửa lỗi nhập liệu "Theo chủ đề". Bạn đã có thể gõ chữ bình thường vào ô nhập liệu này.
               </p>
             </div>
           </div>
@@ -214,7 +218,7 @@ const App: React.FC = () => {
                 <FileText className="w-14 h-14 text-blue-400" />
               </div>
               <h3 className="text-3xl font-black text-slate-800 mb-4 uppercase tracking-tight">Trung tâm soạn thảo AI</h3>
-              <p className="text-slate-500 max-w-lg text-lg leading-relaxed font-medium">Hệ thống đã cập nhật mẫu ma trận mới nhất theo yêu cầu.</p>
+              <p className="text-slate-500 max-w-lg text-lg leading-relaxed font-medium">Hệ thống đã sẵn sàng phục vụ giáo viên Trường THCS Đông Trà.</p>
             </div>
           )}
 
@@ -226,8 +230,8 @@ const App: React.FC = () => {
                   <BookOpen className="w-12 h-12 text-blue-700 animate-pulse" />
                 </div>
               </div>
-              <h3 className="text-2xl font-black text-slate-800 mb-3 uppercase tracking-wider">Đang biên soạn mẫu ma trận mới</h3>
-              <p className="text-slate-500 text-lg font-medium animate-pulse italic">Hệ thống đang thiết lập các bảng gộp ô phức tạp...</p>
+              <h3 className="text-2xl font-black text-slate-800 mb-3 uppercase tracking-wider">Đang biên soạn hồ sơ đề thi</h3>
+              <p className="text-slate-500 text-lg font-medium animate-pulse italic">Hệ thống đang thiết lập các bảng gộp ô phức tạp theo mẫu chuẩn...</p>
             </div>
           )}
 
@@ -258,7 +262,7 @@ const App: React.FC = () => {
               <div className="p-5 bg-white border-b flex items-center justify-between no-print">
                 <div className="flex items-center space-x-3">
                   <span className="text-[10px] font-black text-blue-700 uppercase tracking-[0.2em] px-4 py-2 bg-blue-50 rounded-full">
-                    Chế độ Preview ma trận 4 tầng
+                    Chế độ Preview ma trận CV 7991
                   </span>
                 </div>
                 <button
@@ -286,7 +290,7 @@ const App: React.FC = () => {
       <footer className="bg-white border-t py-10 text-center text-slate-400 text-xs no-print">
         <div className="max-w-7xl mx-auto flex flex-col items-center space-y-4">
           <p className="font-bold uppercase tracking-widest">Hội đồng Sư phạm Trường THCS Đông Trà</p>
-          <p className="max-w-md mx-auto opacity-70">Tuân thủ Công văn 7991/BGDĐT-GDTrH.</p>
+          <p className="max-w-md mx-auto opacity-70">Hệ thống AI chuyên dụng soạn hồ sơ đề kiểm tra.</p>
         </div>
       </footer>
     </div>
