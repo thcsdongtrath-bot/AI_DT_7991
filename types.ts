@@ -37,6 +37,11 @@ export enum ScopeType {
   TOPIC = 'Theo chủ đề'
 }
 
+export enum SchoolYear {
+  Y24_25 = '2024 - 2025',
+  Y25_26 = '2025 - 2026'
+}
+
 export interface ExamConfig {
   subject: string;
   grade: string;
@@ -44,6 +49,7 @@ export interface ExamConfig {
   duration: string;
   scale: string;
   scopeType: ScopeType;
+  schoolYear: SchoolYear;
   specificTopic?: string;
 }
 

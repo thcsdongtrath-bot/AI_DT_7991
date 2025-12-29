@@ -3,38 +3,46 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ExamConfig, ExamResult, ScopeType } from "../types";
 
 export const generateExamContent = async (config: ExamConfig): Promise<ExamResult> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("AUTH_REQUIRED");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
 
   const prompt = `
-    Bạn là chuyên gia khảo thí tại Trường THCS Đông Trà. Hãy soạn bộ hồ sơ đề kiểm tra bám sát 100% MẪU HÌNH ẢNH (4 tầng header) cho:
+    Bạn là chuyên gia khảo thí của TRƯỜNG THCS ĐÔNG TRÀ. Hãy soạn bộ hồ sơ đề kiểm tra CHUẨN 100% THEO CÔNG VAV 7991 cho:
     - Môn: ${config.subject}, Lớp: ${config.grade}
+    - Năm học: ${config.schoolYear}
     - Phạm vi: ${config.scopeType === ScopeType.TOPIC ? config.specificTopic : config.scopeType}
     - Thời gian: ${config.duration}, Thang điểm: ${config.scale}
 
-    YÊU CẦU CẤU TRÚC HTML CHO MA TRẬN (18 CỘT - 4 TẦNG HEADER):
-    Header phải có cấu trúc rowspan/colspan như sau:
-    - Tầng 1: TT (rowspan=4), Chủ đề (rowspan=4), Nội dung (rowspan=4), Mức độ đánh giá (colspan=12), Tổng (colspan=3, rowspan=2), Tỉ lệ % điểm (rowspan=4).
-    - Tầng 2: TNKQ (colspan=9), Tự luận (colspan=3).
-    - Tầng 3 (Dưới TNKQ): Nhiều lựa chọn (colspan=3), Đúng-Sai (colspan=3), Trả lời ngắn (colspan=3). 
-    - Tầng 3 (Dưới Tự luận): Biết (rowspan=2), Hiểu (rowspan=2), Vận dụng (rowspan=2).
-    - Tầng 3 (Dưới Tổng): Biết (rowspan=2), Hiểu (rowspan=2), Vận dụng (rowspan=2).
-    - Tầng 4 (Dưới Nhiều lựa chọn/Đúng-sai/Trả lời ngắn): Biết, Hiểu, Vận dụng (mỗi loại 3 cột).
+    YÊU CẦU CHI TIẾT CHO TỪNG PHẦN:
 
-    DÒNG TỔNG KẾT MA TRẬN:
-    1. Tổng số câu: Thống kê cho từng cột mức độ.
-    2. Tổng số điểm: Thống kê điểm cho từng cột mức độ.
-    3. Tỉ lệ %: Tính % cho từng mức độ.
+    1. MA TRẬN (HTML):
+    - Cấu trúc 4 tầng header, 19 cột. 
+    - Phải có 3 dòng cuối: Tổng số câu, Tổng số điểm, Tỉ lệ %.
+    - Phân bổ: Nhận biết (~40%), Thông hiểu (~30%), Vận dụng (~20%), Vận dụng cao (~10%).
 
-    YÊU CẦU BẢNG ĐẶC TẢ:
-    - Header tương tự như ma trận nhưng thêm cột "Yêu cầu cần đạt" (rowspan=4).
-    - Nội dung bám sát chương trình GDPT 2018.
+    2. BẢNG ĐẶC TẢ (HTML):
+    - Khớp hoàn toàn với Ma trận về số câu và nội dung kiến thức.
+    - Cột "Yêu cầu cần đạt" phải chi tiết theo chương trình 2018.
 
-    YÊU CẦU ĐỀ THI & ĐÁP ÁN:
-    - Trình bày sạch sẽ, font Times New Roman, không có các ký tự Markdown (*, #).
-    - Không có tiêu đề hành chính "UBND...", chỉ bắt đầu bằng "TRƯỜNG THCS ĐÔNG TRÀ".
+    3. ĐỀ KIỂM TRA (Text):
+    - Tiêu đề: TRƯỜNG THCS ĐÔNG TRÀ - ĐỀ KIỂM TRA ${config.scopeType.toUpperCase()} - NĂM HỌC ${config.schoolYear}.
+    - Cấu trúc: 
+        + Phần I. Trắc nghiệm (Nhiều lựa chọn, Đúng-Sai, Trả lời ngắn).
+        + Phần II. Tự luận.
+    - Không sử dụng Markdown (*, #).
 
-    ĐỊNH DẠNG TRẢ VỀ:
-    - Trả về JSON với các thuộc tính: matrix (HTML), specTable (HTML), examPaper (Text), answerKey (Text).
+    4. ĐÁP ÁN VÀ HƯỚNG DẪN CHẤM (Text):
+    - PHẢI CÓ ĐỦ 2 PHẦN:
+        + A. ĐÁP ÁN TRẮC NGHIỆM: Trình bày dạng bảng (Câu - Đáp án - Điểm).
+        + B. HƯỚNG DẪN CHẤM TỰ LUẬN: Chia theo từng bước giải, mỗi bước tương ứng với số điểm cụ thể (0.25đ, 0.5đ...).
+    - Khớp 100% với đề thi đã ra.
+
+    YÊU CẦU ĐỊNH DẠNG TRẢ VỀ:
+    - Trả về JSON với các thuộc tính: matrix, specTable, examPaper, answerKey.
   `;
 
   try {
@@ -63,11 +71,15 @@ export const generateExamContent = async (config: ExamConfig): Promise<ExamResul
       text = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
     }
 
-    return JSON.parse(text) as ExamResult;
+    const parsed = JSON.parse(text);
+    if (!parsed.answerKey || parsed.answerKey.length < 10) {
+      throw new Error("Phần đáp án bị thiếu hoặc quá ngắn. Vui lòng thử lại.");
+    }
+
+    return parsed as ExamResult;
   } catch (e: any) {
     console.error("Gemini Error:", e);
-    const msg = e.message || "";
-    if (msg.includes("404") || msg.includes("entity was not found")) throw new Error("AUTH_REQUIRED");
-    throw new Error(`Lỗi kỹ thuật: ${msg.substring(0, 60)}`);
+    if (e.message === "AUTH_REQUIRED") throw e;
+    throw new Error(`Lỗi hệ thống: ${e.message.substring(0, 150)}`);
   }
 };
