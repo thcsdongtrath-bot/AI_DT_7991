@@ -10,21 +10,20 @@ import {
   BookOpen,
   LayoutGrid,
   AlertCircle,
-  Key
+  Key,
+  RefreshCw
 } from 'lucide-react';
 import { ExamConfig, ExamResult, Subject, Grade, Duration, Scale, ScopeType } from './types';
 import { generateExamContent } from './services/geminiService';
 import { downloadAsFile } from './services/wordService';
 
-// Define the expected AIStudio interface for global window access to resolve type conflicts
-interface AIStudio {
-  hasSelectedApiKey: () => Promise<boolean>;
-  openSelectKey: () => Promise<void>;
-}
-
 declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
   interface Window {
-    aistudio: AIStudio;
+    aistudio?: AIStudio;
   }
 }
 
@@ -43,41 +42,42 @@ const App: React.FC = () => {
   const [result, setResult] = useState<ExamResult | null>(null);
   const [activeTab, setActiveTab] = useState<'matrix' | 'spec' | 'exam' | 'answer'>('matrix');
   const [needsKey, setNeedsKey] = useState(false);
+  const [errorInfo, setErrorInfo] = useState<string | null>(null);
 
   useEffect(() => {
     const checkKey = async () => {
-      // Check if the user has already selected an API key
       if (window.aistudio) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        setNeedsKey(!hasKey);
+        try {
+          const hasKey = await window.aistudio.hasSelectedApiKey();
+          setNeedsKey(!hasKey);
+        } catch (e) {
+          console.error("Key check failed", e);
+        }
       }
     };
     checkKey();
   }, []);
 
   const handleOpenKeyDialog = async () => {
-    // Prompt the user to select an API key using the openSelectKey dialog
     if (window.aistudio) {
       await window.aistudio.openSelectKey();
       setNeedsKey(false);
-      // Assume success after opening dialog and attempt generation
-      handleGenerate();
+      setErrorInfo(null);
     }
   };
 
   const handleGenerate = async () => {
     setLoading(true);
     setResult(null);
+    setErrorInfo(null);
     try {
       const data = await generateExamContent(config);
       setResult(data);
     } catch (error: any) {
-      console.error("Lỗi:", error);
-      // If a 404/Not Found error occurs, prompt for key selection again as per guidelines
       if (error.message === "AUTH_REQUIRED") {
         setNeedsKey(true);
       } else {
-        alert(error.message || "Đã có lỗi xảy ra trong quá trình soạn thảo. Vui lòng thử lại!");
+        setErrorInfo(error.message || "Quá trình soạn thảo gặp lỗi. Vui lòng thử lại!");
       }
     } finally {
       setLoading(false);
@@ -94,9 +94,9 @@ const App: React.FC = () => {
   const renderContent = (content: string) => {
     if (isHtmlString(content)) {
       return (
-        <div className="overflow-x-auto border rounded-lg p-4 bg-white shadow-inner">
+        <div className="overflow-x-auto border-2 border-slate-200 rounded-2xl bg-white p-1">
           <div 
-            className="min-w-[1200px] text-[10pt] table-standard times-new-roman"
+            className="min-w-[1400px] text-[8.5pt] table-standard times-new-roman"
             dangerouslySetInnerHTML={{ __html: content }} 
           />
         </div>
@@ -106,7 +106,7 @@ const App: React.FC = () => {
     const cleanContent = content.replace(/[\*\#]+/g, '');
     
     return (
-      <div className="times-new-roman text-[13pt] text-justify space-y-2 px-4 leading-normal">
+      <div className="times-new-roman text-[13pt] text-justify space-y-4 px-8 leading-relaxed">
         {cleanContent.split('\n')
           .filter(line => {
             const upperLine = line.toUpperCase();
@@ -117,7 +117,7 @@ const App: React.FC = () => {
             if (!trimmed) return <div key={i} className="h-4"></div>;
             const isHeader = trimmed === trimmed.toUpperCase() && trimmed.length > 5;
             return (
-              <p key={i} className={`${isHeader ? 'font-bold text-center uppercase py-2' : ''}`}>
+              <p key={i} className={`${isHeader ? 'font-bold text-center uppercase pt-6 pb-2' : ''}`}>
                 {trimmed}
               </p>
             );
@@ -127,57 +127,63 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100 font-sans">
+    <div className="min-h-screen flex flex-col bg-[#f8fafc] font-sans">
       <style>{`
-        .table-standard table { width: 100%; border-collapse: collapse; margin: 1rem 0; border: 1px solid black; table-layout: fixed; }
-        .table-standard th, .table-standard td { border: 1px solid black; padding: 4px 2px; text-align: center; vertical-align: middle; word-wrap: break-word; overflow: hidden; }
-        .table-standard th { background-color: #f8fafc; font-weight: bold; font-size: 9pt; }
+        .table-standard table { width: 100%; border-collapse: collapse; border: 1.5px solid black; table-layout: fixed; }
+        .table-standard th, .table-standard td { border: 1px solid black; padding: 4px 2px; text-align: center; vertical-align: middle; line-height: 1.1; overflow: hidden; }
+        .table-standard th { background-color: #f1f5f9; font-weight: bold; font-size: 8pt; }
+        .table-standard tr:nth-child(even) td { background-color: #fcfcfc; }
         .times-new-roman { font-family: 'Times New Roman', Times, serif !important; }
         @media print { .no-print { display: none; } }
       `}</style>
 
-      <header className="bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-900 text-white shadow-2xl py-6 px-6 no-print">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center space-x-5">
-            <div className="p-3 bg-white/20 backdrop-blur-xl rounded-2xl shadow-inner border border-white/20">
-              <School className="w-10 h-10 text-white" />
+      <header className="bg-gradient-to-r from-[#001f3f] to-[#003366] text-white shadow-2xl py-6 px-10 no-print">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center space-x-6">
+            <div className="p-4 bg-white/10 backdrop-blur-lg rounded-[2rem] border border-white/20 shadow-inner">
+              <School className="w-12 h-12 text-blue-200" />
             </div>
             <div>
-              <h1 className="text-3xl font-black tracking-tight uppercase leading-tight">Trường THCS Đông Trà</h1>
-              <p className="text-blue-200 text-sm font-semibold tracking-wide">TRỢ LÝ AI SOẠN THẢO CHUYÊN NGHIỆP CV 7991</p>
+              <h1 className="text-3xl font-black uppercase tracking-tight leading-none">Trường THCS Đông Trà</h1>
+              <div className="flex items-center space-x-3 mt-2">
+                <span className="px-3 py-1 bg-blue-500/30 rounded-full text-[10px] font-black uppercase tracking-widest text-blue-100 border border-blue-400/30">
+                  Mẫu 4 tầng Header 7991
+                </span>
+                <span className="text-blue-300/80 text-[10px] font-bold uppercase tracking-widest">Hệ thống khảo thí AI</span>
+              </div>
             </div>
           </div>
           <div className="flex items-center space-x-4">
             {needsKey && (
                <button 
                 onClick={handleOpenKeyDialog}
-                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 animate-pulse"
+                className="bg-[#f59e0b] hover:bg-[#d97706] text-white px-6 py-3 rounded-2xl text-xs font-black flex items-center space-x-2 animate-pulse shadow-xl"
                >
                  <Key className="w-4 h-4" />
                  <span>KÍCH HOẠT API</span>
                </button>
             )}
-            <div className="bg-green-500/20 px-5 py-2.5 rounded-2xl border border-green-400/30 flex items-center space-x-3 text-xs font-bold uppercase tracking-widest text-green-300">
-              <div className="w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(74,222,128,0.8)]"></div>
-              <span>Hệ thống trực tuyến</span>
+            <div className="bg-white/5 px-6 py-3 rounded-2xl border border-white/10 flex items-center space-x-4 text-[10px] font-bold uppercase">
+              <div className="w-2.5 h-2.5 bg-green-400 rounded-full shadow-[0_0_12px_rgba(74,222,128,0.6)] animate-pulse"></div>
+              <span className="text-slate-300">Máy chủ ổn định</span>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 max-w-[1600px] mx-auto w-full p-4 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <aside className="lg:col-span-3 space-y-6 no-print">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-8 space-y-6 sticky top-8">
-            <h2 className="flex items-center space-x-3 font-black text-slate-800 text-xl border-b border-slate-100 pb-4">
-              <Settings className="w-6 h-6 text-blue-700" />
-              <span>Cấu hình đề thi</span>
-            </h2>
+      <main className="flex-1 max-w-[1700px] mx-auto w-full p-4 lg:p-10 grid grid-cols-1 lg:grid-cols-12 gap-10">
+        <aside className="lg:col-span-3 space-y-8 no-print">
+          <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-200 p-10 space-y-8 sticky top-10">
+            <div className="flex items-center space-x-4 text-slate-900 border-b border-slate-100 pb-6">
+              <Settings className="w-7 h-7 text-blue-700" />
+              <h2 className="font-black text-xl uppercase tracking-tighter">Cấu hình hồ sơ</h2>
+            </div>
 
-            <div className="space-y-5">
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Môn học</label>
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Môn học khảo thí</label>
                 <select 
-                  className="w-full rounded-2xl border-slate-200 bg-slate-50 focus:ring-4 focus:ring-blue-100 py-3.5 font-bold text-slate-700 transition-all cursor-pointer"
+                  className="w-full rounded-2xl border-slate-200 bg-slate-50 py-4.5 px-6 font-bold text-slate-800 focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer shadow-sm"
                   value={config.subject}
                   onChange={(e) => setConfig(prev => ({...prev, subject: e.target.value}))}
                 >
@@ -185,21 +191,21 @@ const App: React.FC = () => {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Lớp</label>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Khối lớp</label>
                   <select 
-                    className="w-full rounded-2xl border-slate-200 bg-slate-50 py-3.5 font-bold text-slate-700"
+                    className="w-full rounded-2xl border-slate-200 bg-slate-50 py-4.5 px-6 font-bold text-slate-800"
                     value={config.grade}
                     onChange={(e) => setConfig(prev => ({...prev, grade: e.target.value}))}
                   >
                     {Object.values(Grade).map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Thang điểm</label>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Thang điểm</label>
                   <select 
-                    className="w-full rounded-2xl border-slate-200 bg-slate-50 py-3.5 font-bold text-slate-700"
+                    className="w-full rounded-2xl border-slate-200 bg-slate-50 py-4.5 px-6 font-bold text-slate-800"
                     value={config.scale}
                     onChange={(e) => setConfig(prev => ({...prev, scale: e.target.value}))}
                   >
@@ -208,10 +214,10 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Thời gian làm bài</label>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Thời gian thi</label>
                 <select 
-                  className="w-full rounded-2xl border-slate-200 bg-slate-50 py-3.5 font-bold text-slate-700"
+                  className="w-full rounded-2xl border-slate-200 bg-slate-50 py-4.5 px-6 font-bold text-slate-800"
                   value={config.duration}
                   onChange={(e) => setConfig(prev => ({...prev, duration: e.target.value}))}
                 >
@@ -219,10 +225,10 @@ const App: React.FC = () => {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Phạm vi kiến thức</label>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Phạm vi chuyên môn</label>
                 <select 
-                  className="w-full rounded-2xl border-slate-200 bg-slate-50 py-3.5 font-bold text-slate-700 mb-3"
+                  className="w-full rounded-2xl border-slate-200 bg-slate-50 py-4.5 px-6 font-bold text-slate-800 mb-4 shadow-sm"
                   value={config.scopeType}
                   onChange={(e) => setConfig(prev => ({...prev, scopeType: e.target.value as ScopeType}))}
                 >
@@ -231,14 +237,10 @@ const App: React.FC = () => {
                 {config.scopeType === ScopeType.TOPIC && (
                   <input 
                     type="text"
-                    id="specificTopicInput"
-                    placeholder="Nhập chương hoặc chủ đề..."
-                    className="w-full rounded-2xl border-slate-200 focus:ring-4 focus:ring-blue-100 py-3.5 px-4 font-medium text-slate-800 bg-white shadow-sm transition-all"
+                    placeholder="Tên chương hoặc chủ đề cụ thể..."
+                    className="w-full rounded-2xl border-slate-200 focus:ring-4 focus:ring-blue-100 py-4.5 px-6 font-medium bg-white shadow-inner animate-in fade-in slide-in-from-top-2"
                     value={config.specificTopic || ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setConfig(prev => ({...prev, specificTopic: value}));
-                    }}
+                    onChange={(e) => setConfig(prev => ({...prev, specificTopic: e.target.value}))}
                   />
                 )}
               </div>
@@ -246,107 +248,105 @@ const App: React.FC = () => {
               <button
                 onClick={handleGenerate}
                 disabled={loading}
-                className="w-full bg-blue-700 hover:bg-blue-800 text-white font-black py-4.5 rounded-2xl shadow-xl shadow-blue-200 hover:shadow-blue-300 transition-all flex items-center justify-center space-x-3 disabled:opacity-50 disabled:cursor-not-allowed group active:scale-[0.98]"
+                className="w-full bg-[#003366] hover:bg-[#002244] text-white font-black py-6 rounded-3xl shadow-2xl shadow-blue-900/20 transition-all flex items-center justify-center space-x-4 disabled:opacity-50 active:scale-[0.96] group"
               >
-                {loading ? <Loader2 className="animate-spin w-6 h-6" /> : <LayoutGrid className="w-6 h-6 group-hover:rotate-12 transition-transform" />}
-                <span className="text-lg uppercase">Tạo hồ sơ đề</span>
+                {loading ? <Loader2 className="animate-spin w-7 h-7" /> : <RefreshCw className="w-7 h-7 group-hover:rotate-180 transition-transform duration-700" />}
+                <span className="text-xl uppercase tracking-tighter">Biên soạn hồ sơ</span>
               </button>
             </div>
 
-            <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100 flex items-start space-x-4">
-              <AlertCircle className="w-6 h-6 text-blue-700 shrink-0 mt-0.5" />
-              <p className="text-[11px] text-blue-900 font-medium leading-relaxed italic">
-                {needsKey 
-                  ? "Hệ thống cần cấp quyền API để tiếp tục. Vui lòng bấm nút 'Kích hoạt API' phía trên."
-                  : "Đã sửa lỗi kỹ thuật khi nhập chủ đề và lỗi xử lý dữ liệu AI."}
-              </p>
-            </div>
+            {errorInfo && (
+              <div className="p-5 bg-red-50 border border-red-100 rounded-3xl flex items-start space-x-4 animate-bounce">
+                <AlertCircle className="w-6 h-6 text-red-600 shrink-0" />
+                <p className="text-[11px] text-red-900 font-bold leading-tight italic">{errorInfo}</p>
+              </div>
+            )}
           </div>
         </aside>
 
-        <section className="lg:col-span-9 flex flex-col min-h-[700px]">
+        <section className="lg:col-span-9 flex flex-col min-h-[900px]">
           {needsKey && !result && !loading && (
-             <div className="flex-1 bg-white rounded-[40px] border-2 border-amber-300 bg-amber-50/20 flex flex-col items-center justify-center p-16 text-center shadow-inner no-print">
-               <Key className="w-16 h-16 text-amber-500 mb-6 animate-pulse" />
-               <h3 className="text-2xl font-black text-slate-800 mb-2 uppercase">Cần kích hoạt API</h3>
-               <p className="text-slate-600 mb-8 max-w-md">Do chính sách bảo mật của Model Pro, bạn cần bấm nút bên dưới để chọn API Key trả phí từ dự án của mình trước khi AI có thể làm việc.</p>
+             <div className="flex-1 bg-white rounded-[4rem] border-2 border-amber-200 bg-amber-50/10 flex flex-col items-center justify-center p-20 text-center no-print shadow-inner">
+               <div className="w-24 h-24 bg-amber-100 rounded-[2.5rem] flex items-center justify-center mb-8 shadow-lg">
+                 <Key className="w-12 h-12 text-amber-600 animate-pulse" />
+               </div>
+               <h3 className="text-3xl font-black text-slate-900 mb-4 uppercase">Kích hoạt quyền truy cập</h3>
+               <p className="text-slate-500 mb-10 max-w-md text-lg font-medium leading-relaxed">Hệ thống Gemini 3 Flash yêu cầu API Key chính chủ để đảm bảo chất lượng soạn thảo hồ sơ 7991 cao nhất.</p>
                <button 
                   onClick={handleOpenKeyDialog}
-                  className="bg-amber-500 hover:bg-amber-600 text-white px-10 py-4 rounded-2xl text-lg font-black shadow-xl shadow-amber-200 active:scale-95 transition-all"
+                  className="bg-amber-500 hover:bg-amber-600 text-white px-14 py-5 rounded-[2rem] text-xl font-black shadow-2xl shadow-amber-200 active:scale-95 transition-all"
                >
-                 BẤM ĐỂ CHỌN API KEY
+                 CHỌN API KEY CỦA BẠN
                </button>
-               <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="mt-4 text-xs text-blue-600 underline">Hướng dẫn thanh toán API</a>
              </div>
           )}
 
           {!result && !loading && !needsKey && (
-            <div className="flex-1 bg-white rounded-[40px] border-2 border-dashed border-slate-300 flex flex-col items-center justify-center p-16 text-center shadow-inner no-print">
-              <div className="w-28 h-28 bg-blue-50 rounded-full flex items-center justify-center mb-8 animate-bounce shadow-lg shadow-blue-100">
-                <FileText className="w-14 h-14 text-blue-400" />
+            <div className="flex-1 bg-white rounded-[4rem] border-4 border-dashed border-slate-100 flex flex-col items-center justify-center p-20 text-center no-print shadow-inner">
+              <div className="w-32 h-32 bg-blue-50 rounded-full flex items-center justify-center mb-10 shadow-2xl border-4 border-white">
+                <FileText className="w-16 h-16 text-blue-400" />
               </div>
-              <h3 className="text-3xl font-black text-slate-800 mb-4 uppercase tracking-tight">Trung tâm soạn thảo AI</h3>
-              <p className="text-slate-500 max-w-lg text-lg leading-relaxed font-medium">Hệ thống đã sẵn sàng phục vụ giáo viên Trường THCS Đông Trà.</p>
+              <h3 className="text-4xl font-black text-slate-900 mb-6 uppercase tracking-tighter">Trung tâm khảo thí AI</h3>
+              <p className="text-slate-400 max-w-xl text-xl leading-relaxed font-semibold">Tự động hóa xây dựng Ma trận, Đặc tả, Đề thi và Đáp án chuẩn 100% Công văn 7991 cho giáo viên Đông Trà.</p>
             </div>
           )}
 
           {loading && (
-            <div className="flex-1 bg-white rounded-[40px] shadow-2xl flex flex-col items-center justify-center p-16 text-center no-print">
-              <div className="relative mb-10">
-                <div className="w-32 h-32 border-[12px] border-slate-50 border-t-blue-700 rounded-full animate-spin"></div>
+            <div className="flex-1 bg-white rounded-[4rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.15)] flex flex-col items-center justify-center p-20 text-center no-print">
+              <div className="relative mb-12">
+                <div className="w-40 h-40 border-[16px] border-slate-50 border-t-blue-800 rounded-full animate-spin"></div>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <BookOpen className="w-12 h-12 text-blue-700 animate-pulse" />
+                  <BookOpen className="w-14 h-14 text-blue-800 animate-pulse" />
                 </div>
               </div>
-              <h3 className="text-2xl font-black text-slate-800 mb-3 uppercase tracking-wider">Đang biên soạn hồ sơ đề thi</h3>
-              <p className="text-slate-500 text-lg font-medium animate-pulse italic">AI đang xử lý các bảng dữ liệu phức tạp...</p>
+              <h3 className="text-3xl font-black text-slate-900 mb-4 uppercase tracking-wider">Đang khởi tạo ma trận 4 tầng</h3>
+              <p className="text-blue-700/60 text-xl font-black animate-pulse italic">AI đang tính toán tỉ lệ điểm và biên soạn đề...</p>
             </div>
           )}
 
           {result && !loading && (
-            <div className="flex-1 flex flex-col bg-white rounded-[40px] shadow-2xl border border-slate-200 overflow-hidden">
-              <div className="flex bg-slate-50 border-b p-3 no-print">
+            <div className="flex-1 flex flex-col bg-white rounded-[4rem] shadow-2xl border border-slate-200 overflow-hidden">
+              <nav className="flex bg-[#fcfdfe] border-b p-5 no-print gap-3 overflow-x-auto">
                 {[
-                  { id: 'matrix', label: 'Ma trận đề', icon: LayoutGrid },
+                  { id: 'matrix', label: 'Ma trận (4 tầng)', icon: LayoutGrid },
                   { id: 'spec', label: 'Bảng đặc tả', icon: FileText },
                   { id: 'exam', label: 'Đề kiểm tra', icon: BookOpen },
-                  { id: 'answer', label: 'Đáp án & HD chấm', icon: CheckCircle2 },
+                  { id: 'answer', label: 'Đáp án & HD', icon: CheckCircle2 },
                 ].map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as any)}
-                    className={`flex-1 flex items-center justify-center space-x-3 py-4 px-6 rounded-2xl text-sm font-black uppercase tracking-tighter transition-all ${
+                    className={`flex-1 flex items-center justify-center space-x-3 py-5 px-8 min-w-[200px] rounded-3xl text-sm font-black uppercase tracking-tighter transition-all ${
                       activeTab === tab.id 
-                      ? 'bg-blue-700 text-white shadow-xl shadow-blue-200' 
-                      : 'text-slate-500 hover:bg-slate-200'
+                      ? 'bg-blue-800 text-white shadow-[0_20px_40px_-10px_rgba(30,58,138,0.5)] translate-y-[-4px]' 
+                      : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
                     }`}
                   >
                     <tab.icon className="w-5 h-5" />
-                    <span className="hidden sm:inline">{tab.label}</span>
+                    <span>{tab.label}</span>
                   </button>
                 ))}
-              </div>
+              </nav>
 
-              <div className="p-5 bg-white border-b flex items-center justify-between no-print">
-                <div className="flex items-center space-x-3">
-                  <span className="text-[10px] font-black text-blue-700 uppercase tracking-[0.2em] px-4 py-2 bg-blue-50 rounded-full">
-                    Chế độ Preview chuẩn CV 7991
-                  </span>
+              <div className="p-8 bg-white border-b flex items-center justify-between no-print">
+                <div className="flex items-center space-x-5">
+                  <div className="h-10 w-1.5 bg-blue-800 rounded-full"></div>
+                  <span className="text-sm font-black text-slate-900 uppercase tracking-[0.2em]">Hồ sơ chính thức (Preview)</span>
                 </div>
                 <button
                   onClick={() => {
-                    const titles = { matrix: 'MA_TRAN', spec: 'DAC_TA', exam: 'DE_KIEM_TRA', answer: 'DAP_AN' };
+                    const titles = { matrix: 'MA_TRAN_7991_4TANG', spec: 'DAC_TA_7991', exam: 'DE_KIEM_TRA', answer: 'DAP_AN' };
                     handleDownload(activeTab === 'spec' ? 'specTable' : activeTab === 'exam' ? 'examPaper' : activeTab === 'answer' ? 'answerKey' : 'matrix', titles[activeTab]);
                   }}
-                  className="flex items-center space-x-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black py-3 px-8 rounded-2xl shadow-xl hover:shadow-emerald-200 transition-all active:scale-95"
+                  className="flex items-center space-x-4 bg-[#10b981] hover:bg-[#059669] text-white text-md font-black py-4 px-10 rounded-3xl shadow-2xl hover:shadow-emerald-200 transition-all active:scale-95 group"
                 >
-                  <Download className="w-5 h-5" />
-                  <span>XUẤT WORD (.DOC)</span>
+                  <Download className="w-6 h-6 group-hover:translate-y-1 transition-transform" />
+                  <span>XUẤT WORD CHUẨN</span>
                 </button>
               </div>
 
-              <div className="flex-1 overflow-auto p-4 sm:p-12 bg-slate-200/50 scroll-smooth">
-                <div className={`mx-auto bg-white shadow-[0_35px_60px_-15px_rgba(0,0,0,0.3)] p-8 sm:p-12 min-h-full w-full ${activeTab === 'matrix' || activeTab === 'spec' ? 'max-w-[32cm]' : 'max-w-[21cm]'} times-new-roman border-t-8 border-blue-700 rounded-b-xl`}>
+              <div className="flex-1 overflow-auto p-6 sm:p-14 bg-slate-50 scroll-smooth">
+                <div className={`mx-auto bg-white shadow-[0_40px_80px_-20px_rgba(0,0,0,0.1)] p-12 sm:p-20 min-h-full w-full ${activeTab === 'matrix' || activeTab === 'spec' ? 'max-w-[1500px]' : 'max-w-[900px]'} times-new-roman border-t-[12px] border-blue-900 rounded-b-[3rem]`}>
                   {renderContent(activeTab === 'matrix' ? result.matrix : activeTab === 'spec' ? result.specTable : activeTab === 'exam' ? result.examPaper : result.answerKey)}
                 </div>
               </div>
@@ -355,10 +355,11 @@ const App: React.FC = () => {
         </section>
       </main>
 
-      <footer className="bg-white border-t py-10 text-center text-slate-400 text-xs no-print">
-        <div className="max-w-7xl mx-auto flex flex-col items-center space-y-4">
-          <p className="font-bold uppercase tracking-widest">Hội đồng Sư phạm Trường THCS Đông Trà</p>
-          <p className="max-w-md mx-auto opacity-70">Hệ thống AI chuyên dụng soạn đề kiểm tra mẫu chuẩn.</p>
+      <footer className="bg-white border-t py-14 text-center no-print">
+        <div className="flex flex-col items-center space-y-4 opacity-30">
+          <School className="w-8 h-8 text-slate-900" />
+          <p className="text-[12px] font-black uppercase tracking-[0.5em] text-slate-800">Hội đồng Sư phạm Trường THCS Đông Trà</p>
+          <p className="text-[10px] font-bold italic tracking-widest text-blue-900">Giải pháp trợ lý AI 2025 - Phiên bản Cao cấp</p>
         </div>
       </footer>
     </div>
