@@ -1,10 +1,12 @@
 
+// Ensure the GoogleGenAI instance is created right before making the API call
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExamConfig, ExamResult, ScopeType } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-
 export const generateExamContent = async (config: ExamConfig): Promise<ExamResult> => {
+  // Always use new GoogleGenAI({ apiKey: process.env.API_KEY }) directly before making a request.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+
   const prompt = `
     Bạn là chuyên gia khảo thí tại Trường THCS Đông Trà. Hãy soạn bộ hồ sơ đề kiểm tra chuẩn mực cho:
     - Môn: ${config.subject}, Lớp: ${config.grade}
@@ -26,48 +28,49 @@ export const generateExamContent = async (config: ExamConfig): Promise<ExamResul
 
     YÊU CẦU CÁC DÒNG TỔNG KẾT (CUỐI BẢNG MA TRẬN):
     Bắt buộc phải có đủ 3 dòng cuối cùng:
-    1. Dòng: TỔNG SỐ CÂU (Thống kê số câu theo từng cột mức độ).
-    2. Dòng: TỔNG SỐ ĐIỂM (Thống kê điểm số theo từng cột mức độ, ngay dưới dòng Tổng số câu).
-    3. Dòng: TỈ LỆ % (Thống kê tỉ lệ % theo các mức độ nhận thức Biết/Hiểu/Vận dụng).
+    1. Dòng: TỔNG SỐ CÂU (Thống kê số câu).
+    2. Dòng: TỔNG SỐ ĐIỂM (Thống kê điểm số, ngay dưới dòng Tổng số câu).
+    3. Dòng: TỈ LỆ % (Thống kê tỉ lệ %).
 
-    YÊU CẦU CẤU TRÚC BẢNG ĐẶC TẢ:
-    - Các cột: TT, Chủ đề/chương, Nội dung/đơn vị kiến thức, Yêu cầu cần đạt, Mức độ đánh giá (Cấu trúc cột Mức độ đánh giá giống hệt Ma trận bên trên, cũng phải có 3 dòng tổng kết ở cuối).
-
-    CẤU TRÚC ĐỀ THI:
-    - 70% Trắc nghiệm - 30% Tự luận.
-    - Phải có đủ 3 dạng TN: MCQ (A/B/C/D), Đúng-Sai (4 ý), Trả lời ngắn.
-    - Tự luận tập trung vận dụng thực tiễn.
-
-    ĐỊNH DẠNG TRẢ VỀ:
-    - 'matrix' và 'specTable': Mã HTML <table> với border="1", sử dụng rowspan và colspan chính xác để khớp mẫu.
-    - 'examPaper': Đề thi thuần văn bản.
-    - 'answerKey': Đáp án thuần văn bản.
+    ĐỊNH DẠNG TRẢ VỀ PHẢI LÀ JSON CHUẨN.
   `;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          matrix: { type: Type.STRING, description: "HTML table for matrix with Total Questions and Total Score rows" },
-          specTable: { type: Type.STRING, description: "HTML table for specification with Total Questions and Total Score rows" },
-          examPaper: { type: Type.STRING },
-          answerKey: { type: Type.STRING },
-        },
-        required: ["matrix", "specTable", "examPaper", "answerKey"],
-      },
-    },
-  });
-
   try {
-    const text = response.text || '{}';
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            matrix: { type: Type.STRING },
+            specTable: { type: Type.STRING },
+            examPaper: { type: Type.STRING },
+            answerKey: { type: Type.STRING },
+          },
+          required: ["matrix", "specTable", "examPaper", "answerKey"],
+        },
+      },
+    });
+
+    let text = response.text || '';
+    
+    // Xử lý trường hợp AI bọc JSON trong Markdown ```json ... ```
+    if (text.includes('```')) {
+      text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    }
+
     const result = JSON.parse(text);
     return result as ExamResult;
-  } catch (e) {
-    console.error("Lỗi parse JSON:", e);
-    throw new Error("Không thể tạo nội dung đề thi. Vui lòng thử lại.");
+  } catch (e: any) {
+    console.error("Gemini Error:", e);
+    
+    // Check for "Requested entity was not found" error as specified in the guidelines
+    if (e.message?.includes("Requested entity was not found") || e.message?.includes("404")) {
+      throw new Error("AUTH_REQUIRED");
+    }
+    
+    throw new Error("Không thể tạo nội dung. Vui lòng kiểm tra kết nối hoặc thử lại.");
   }
 };

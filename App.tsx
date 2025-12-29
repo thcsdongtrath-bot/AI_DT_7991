@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FileText, 
   Settings, 
@@ -9,11 +9,24 @@ import {
   School,
   BookOpen,
   LayoutGrid,
-  AlertCircle
+  AlertCircle,
+  Key
 } from 'lucide-react';
 import { ExamConfig, ExamResult, Subject, Grade, Duration, Scale, ScopeType } from './types';
 import { generateExamContent } from './services/geminiService';
 import { downloadAsFile } from './services/wordService';
+
+// Define the expected AIStudio interface for global window access to resolve type conflicts
+interface AIStudio {
+  hasSelectedApiKey: () => Promise<boolean>;
+  openSelectKey: () => Promise<void>;
+}
+
+declare global {
+  interface Window {
+    aistudio: AIStudio;
+  }
+}
 
 const App: React.FC = () => {
   const [config, setConfig] = useState<ExamConfig>({
@@ -29,6 +42,28 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ExamResult | null>(null);
   const [activeTab, setActiveTab] = useState<'matrix' | 'spec' | 'exam' | 'answer'>('matrix');
+  const [needsKey, setNeedsKey] = useState(false);
+
+  useEffect(() => {
+    const checkKey = async () => {
+      // Check if the user has already selected an API key
+      if (window.aistudio) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setNeedsKey(!hasKey);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleOpenKeyDialog = async () => {
+    // Prompt the user to select an API key using the openSelectKey dialog
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      setNeedsKey(false);
+      // Assume success after opening dialog and attempt generation
+      handleGenerate();
+    }
+  };
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -36,9 +71,14 @@ const App: React.FC = () => {
     try {
       const data = await generateExamContent(config);
       setResult(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Lỗi:", error);
-      alert("Đã có lỗi xảy ra trong quá trình soạn thảo. Vui lòng thử lại!");
+      // If a 404/Not Found error occurs, prompt for key selection again as per guidelines
+      if (error.message === "AUTH_REQUIRED") {
+        setNeedsKey(true);
+      } else {
+        alert(error.message || "Đã có lỗi xảy ra trong quá trình soạn thảo. Vui lòng thử lại!");
+      }
     } finally {
       setLoading(false);
     }
@@ -107,9 +147,20 @@ const App: React.FC = () => {
               <p className="text-blue-200 text-sm font-semibold tracking-wide">TRỢ LÝ AI SOẠN THẢO CHUYÊN NGHIỆP CV 7991</p>
             </div>
           </div>
-          <div className="bg-green-500/20 px-5 py-2.5 rounded-2xl border border-green-400/30 flex items-center space-x-3 text-xs font-bold uppercase tracking-widest text-green-300">
-            <div className="w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(74,222,128,0.8)]"></div>
-            <span>Hệ thống trực tuyến</span>
+          <div className="flex items-center space-x-4">
+            {needsKey && (
+               <button 
+                onClick={handleOpenKeyDialog}
+                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 animate-pulse"
+               >
+                 <Key className="w-4 h-4" />
+                 <span>KÍCH HOẠT API</span>
+               </button>
+            )}
+            <div className="bg-green-500/20 px-5 py-2.5 rounded-2xl border border-green-400/30 flex items-center space-x-3 text-xs font-bold uppercase tracking-widest text-green-300">
+              <div className="w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(74,222,128,0.8)]"></div>
+              <span>Hệ thống trực tuyến</span>
+            </div>
           </div>
         </div>
       </header>
@@ -205,14 +256,31 @@ const App: React.FC = () => {
             <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100 flex items-start space-x-4">
               <AlertCircle className="w-6 h-6 text-blue-700 shrink-0 mt-0.5" />
               <p className="text-[11px] text-blue-900 font-medium leading-relaxed italic">
-                * Đã sửa lỗi nhập liệu "Theo chủ đề". Bạn đã có thể gõ chữ bình thường vào ô nhập liệu này.
+                {needsKey 
+                  ? "Hệ thống cần cấp quyền API để tiếp tục. Vui lòng bấm nút 'Kích hoạt API' phía trên."
+                  : "Đã sửa lỗi kỹ thuật khi nhập chủ đề và lỗi xử lý dữ liệu AI."}
               </p>
             </div>
           </div>
         </aside>
 
         <section className="lg:col-span-9 flex flex-col min-h-[700px]">
-          {!result && !loading && (
+          {needsKey && !result && !loading && (
+             <div className="flex-1 bg-white rounded-[40px] border-2 border-amber-300 bg-amber-50/20 flex flex-col items-center justify-center p-16 text-center shadow-inner no-print">
+               <Key className="w-16 h-16 text-amber-500 mb-6 animate-pulse" />
+               <h3 className="text-2xl font-black text-slate-800 mb-2 uppercase">Cần kích hoạt API</h3>
+               <p className="text-slate-600 mb-8 max-w-md">Do chính sách bảo mật của Model Pro, bạn cần bấm nút bên dưới để chọn API Key trả phí từ dự án của mình trước khi AI có thể làm việc.</p>
+               <button 
+                  onClick={handleOpenKeyDialog}
+                  className="bg-amber-500 hover:bg-amber-600 text-white px-10 py-4 rounded-2xl text-lg font-black shadow-xl shadow-amber-200 active:scale-95 transition-all"
+               >
+                 BẤM ĐỂ CHỌN API KEY
+               </button>
+               <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="mt-4 text-xs text-blue-600 underline">Hướng dẫn thanh toán API</a>
+             </div>
+          )}
+
+          {!result && !loading && !needsKey && (
             <div className="flex-1 bg-white rounded-[40px] border-2 border-dashed border-slate-300 flex flex-col items-center justify-center p-16 text-center shadow-inner no-print">
               <div className="w-28 h-28 bg-blue-50 rounded-full flex items-center justify-center mb-8 animate-bounce shadow-lg shadow-blue-100">
                 <FileText className="w-14 h-14 text-blue-400" />
@@ -231,7 +299,7 @@ const App: React.FC = () => {
                 </div>
               </div>
               <h3 className="text-2xl font-black text-slate-800 mb-3 uppercase tracking-wider">Đang biên soạn hồ sơ đề thi</h3>
-              <p className="text-slate-500 text-lg font-medium animate-pulse italic">Hệ thống đang thiết lập các bảng gộp ô phức tạp theo mẫu chuẩn...</p>
+              <p className="text-slate-500 text-lg font-medium animate-pulse italic">AI đang xử lý các bảng dữ liệu phức tạp...</p>
             </div>
           )}
 
@@ -262,7 +330,7 @@ const App: React.FC = () => {
               <div className="p-5 bg-white border-b flex items-center justify-between no-print">
                 <div className="flex items-center space-x-3">
                   <span className="text-[10px] font-black text-blue-700 uppercase tracking-[0.2em] px-4 py-2 bg-blue-50 rounded-full">
-                    Chế độ Preview ma trận CV 7991
+                    Chế độ Preview chuẩn CV 7991
                   </span>
                 </div>
                 <button
@@ -290,7 +358,7 @@ const App: React.FC = () => {
       <footer className="bg-white border-t py-10 text-center text-slate-400 text-xs no-print">
         <div className="max-w-7xl mx-auto flex flex-col items-center space-y-4">
           <p className="font-bold uppercase tracking-widest">Hội đồng Sư phạm Trường THCS Đông Trà</p>
-          <p className="max-w-md mx-auto opacity-70">Hệ thống AI chuyên dụng soạn hồ sơ đề kiểm tra.</p>
+          <p className="max-w-md mx-auto opacity-70">Hệ thống AI chuyên dụng soạn đề kiểm tra mẫu chuẩn.</p>
         </div>
       </footer>
     </div>
